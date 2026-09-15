@@ -1,0 +1,1981 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Simulador Interactivo de Diagnóstico de Hardware y BIOS/UEFI</title>
+<style>
+/* ============================================================
+   RESET & VARIABLES
+   ============================================================ */
+*{box-sizing:border-box;margin:0;padding:0;}
+:root{
+  --bg:#070b14;
+  --bg-2:#0a1020;
+  --panel:#0e1524;
+  --panel-2:#131c2f;
+  --panel-3:#18233a;
+  --border:#1f2c45;
+  --border-2:#2a3b5c;
+  --accent:#2f81f7;
+  --accent-2:#22d3ee;
+  --green:#22c55e;
+  --amber:#f59e0b;
+  --red:#ef4444;
+  --text:#e2e8f0;
+  --muted:#8b9ab3;
+  --mono:'JetBrains Mono','SFMono-Regular',Consolas,'Courier New',monospace;
+  --radius:10px;
+}
+html{scroll-behavior:smooth;}
+body{
+  background:
+    radial-gradient(1200px 600px at 10% -10%, #10203a 0%, transparent 60%),
+    radial-gradient(900px 500px at 110% 10%, #0d2a33 0%, transparent 55%),
+    var(--bg);
+  color:var(--text);
+  font-family:'Segoe UI',system-ui,-apple-system,'Helvetica Neue',Arial,sans-serif;
+  font-size:15px;
+  line-height:1.55;
+  min-height:100vh;
+  -webkit-font-smoothing:antialiased;
+}
+/* rejilla técnica de fondo */
+body::before{
+  content:"";
+  position:fixed;inset:0;
+  background-image:
+    linear-gradient(rgba(47,129,247,.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(47,129,247,.045) 1px, transparent 1px);
+  background-size:42px 42px;
+  pointer-events:none;
+  z-index:0;
+}
+.app{position:relative;z-index:1;max-width:1180px;margin:0 auto;padding:14px 12px 90px;}
+
+/* ============================================================
+   HEADER
+   ============================================================ */
+.app-header{
+  background:linear-gradient(160deg,#0d1729 0%,#0a1220 100%);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:16px 16px 14px;
+  margin-bottom:14px;
+  box-shadow:0 0 0 1px rgba(47,129,247,.06), 0 18px 40px -22px rgba(0,0,0,.9);
+  position:relative;
+  overflow:hidden;
+}
+.app-header::after{
+  content:"";
+  position:absolute;top:0;left:0;right:0;height:3px;
+  background:linear-gradient(90deg,var(--accent),var(--accent-2),var(--green));
+}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;}
+.chip{
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--accent-2);border:1px solid rgba(34,211,238,.35);
+  background:rgba(34,211,238,.08);padding:3px 9px;border-radius:999px;
+}
+.chip.warn{color:var(--amber);border-color:rgba(245,158,11,.35);background:rgba(245,158,11,.08);}
+.app-header h1{
+  font-size:clamp(1.05rem,3.6vw,1.5rem);
+  font-weight:700;letter-spacing:-.02em;line-height:1.25;
+  background:linear-gradient(90deg,#fff,#9dc4ff);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.app-header p.sub{color:var(--muted);font-size:12.5px;margin-top:4px;}
+
+/* barra de progreso global */
+.global-progress{margin-top:14px;}
+.gp-top{display:flex;justify-content:space-between;font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:6px;}
+.gp-track{height:9px;background:#0a1424;border:1px solid var(--border);border-radius:999px;overflow:hidden;}
+.gp-fill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent-2));transition:width .5s cubic-bezier(.4,0,.2,1);box-shadow:0 0 12px rgba(47,129,247,.6);}
+
+/* ============================================================
+   TABS
+   ============================================================ */
+.tabs{
+  display:flex;gap:8px;overflow-x:auto;padding-bottom:10px;margin-bottom:12px;
+  scrollbar-width:thin;-webkit-overflow-scrolling:touch;
+}
+.tabs::-webkit-scrollbar{height:5px;}
+.tabs::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:9px;}
+.tab{
+  flex:0 0 auto;
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.03em;
+  color:var(--muted);background:var(--panel);border:1px solid var(--border);
+  padding:9px 14px;border-radius:8px;cursor:pointer;transition:.2s;white-space:nowrap;
+  display:flex;align-items:center;gap:7px;
+}
+.tab:hover{border-color:var(--border-2);color:var(--text);}
+.tab.active{
+  color:#fff;border-color:var(--accent);
+  background:linear-gradient(180deg,rgba(47,129,247,.22),rgba(47,129,247,.07));
+  box-shadow:0 0 0 1px rgba(47,129,247,.35), 0 8px 20px -12px rgba(47,129,247,.9);
+}
+.tab .dot{width:7px;height:7px;border-radius:50%;background:#334155;flex:0 0 auto;}
+.tab.done .dot{background:var(--green);box-shadow:0 0 8px rgba(34,197,94,.8);}
+
+/* ============================================================
+   MODULES / PANELS
+   ============================================================ */
+.module{display:none;animation:fade .35s ease;}
+.module.active{display:block;}
+@keyframes fade{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
+
+.panel{
+  background:linear-gradient(180deg,var(--panel) 0%,var(--panel-2) 100%);
+  border:1px solid var(--border);
+  border-radius:var(--radius);
+  padding:14px;
+  margin-bottom:14px;
+  position:relative;
+}
+.panel-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:12px;flex-wrap:wrap;}
+.step-badge{
+  flex:0 0 auto;width:32px;height:32px;border-radius:8px;
+  display:grid;place-items:center;font-family:var(--mono);font-weight:700;font-size:14px;
+  background:linear-gradient(160deg,rgba(47,129,247,.3),rgba(47,129,247,.08));
+  border:1px solid rgba(47,129,247,.5);color:#bcd9ff;
+}
+.step-badge.green{background:linear-gradient(160deg,rgba(34,197,94,.3),rgba(34,197,94,.08));border-color:rgba(34,197,94,.5);color:#b6f0cb;}
+.step-badge.red{background:linear-gradient(160deg,rgba(239,68,68,.3),rgba(239,68,68,.08));border-color:rgba(239,68,68,.5);color:#ffc9c9;}
+.panel-title{font-size:14.5px;font-weight:700;letter-spacing:-.01em;}
+.panel-desc{font-size:12.5px;color:var(--muted);margin-top:2px;}
+
+/* ============================================================
+   CHECKBOXES ESD
+   ============================================================ */
+.check-item{
+  display:flex;gap:11px;align-items:flex-start;
+  background:var(--panel-3);border:1px solid var(--border);
+  border-radius:9px;padding:12px;margin-bottom:9px;cursor:pointer;transition:.2s;
+}
+.check-item:hover{border-color:var(--border-2);}
+.check-item.checked{border-color:rgba(34,197,94,.55);background:rgba(34,197,94,.08);}
+.check-box{
+  flex:0 0 auto;width:22px;height:22px;border-radius:6px;
+  border:2px solid var(--border-2);display:grid;place-items:center;
+  font-size:13px;font-weight:700;color:transparent;transition:.2s;margin-top:1px;
+}
+.check-item.checked .check-box{background:var(--green);border-color:var(--green);color:#03210f;}
+.check-text strong{display:block;font-size:13.5px;}
+.check-text span{font-size:12px;color:var(--muted);}
+
+/* ============================================================
+   RIELES ATX
+   ============================================================ */
+.rail{
+  background:var(--panel-3);border:1px solid var(--border);border-radius:9px;
+  padding:12px;margin-bottom:11px;
+}
+.rail-head{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px;}
+.rail-name{font-family:var(--mono);font-weight:700;font-size:14px;color:#bcd9ff;}
+.rail-use{font-size:11px;color:var(--muted);display:block;width:100%;margin-top:-2px;margin-bottom:8px;}
+.rail-badge{
+  font-family:var(--mono);font-size:10.5px;font-weight:700;letter-spacing:.06em;
+  padding:3px 9px;border-radius:999px;border:1px solid var(--border-2);color:var(--muted);
+  background:#0b1322;white-space:nowrap;
+}
+.rail-badge.ok{color:#062b14;background:var(--green);border-color:var(--green);}
+.rail-badge.bad{color:#2b0606;background:var(--red);border-color:var(--red);}
+.rail-badge.warn{color:#2b1c02;background:var(--amber);border-color:var(--amber);}
+
+.rail-bar{
+  position:relative;height:22px;border-radius:6px;margin:10px 0 6px;
+  background:linear-gradient(90deg,#2a0d0d,#1a1a1a,#0d2a14,#1a1a1a,#2a0d0d);
+  border:1px solid var(--border);overflow:hidden;
+}
+.rail-zone{position:absolute;top:0;bottom:0;background:rgba(34,197,94,.28);border-left:1px solid rgba(34,197,94,.7);border-right:1px solid rgba(34,197,94,.7);}
+.rail-marker{
+  position:absolute;top:-3px;bottom:-3px;width:4px;border-radius:3px;
+  background:#fff;box-shadow:0 0 10px rgba(255,255,255,.9);
+  transition:left .35s cubic-bezier(.4,0,.2,1), background .3s;
+  left:0;
+}
+.rail-marker.bad{background:var(--red);box-shadow:0 0 12px rgba(239,68,68,.95);}
+.rail-marker.ok{background:var(--green);box-shadow:0 0 12px rgba(34,197,94,.95);}
+.rail-limits{display:flex;justify-content:space-between;font-family:var(--mono);font-size:10px;color:var(--muted);margin-bottom:9px;}
+
+.rail-input{display:flex;align-items:center;gap:8px;}
+.rail-input input{
+  flex:1;min-width:0;background:#0a1220;border:1px solid var(--border-2);color:#fff;
+  font-family:var(--mono);font-size:15px;padding:9px 11px;border-radius:7px;outline:none;transition:.2s;
+}
+.rail-input input:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,129,247,.2);}
+.rail-input .unit{font-family:var(--mono);color:var(--muted);font-size:13px;}
+
+/* ============================================================
+   BOTONES
+   ============================================================ */
+.btn{
+  font-family:var(--mono);font-size:12.5px;font-weight:600;letter-spacing:.02em;
+  border:1px solid var(--border-2);background:var(--panel-3);color:var(--text);
+  padding:11px 16px;border-radius:8px;cursor:pointer;transition:.18s;
+  display:inline-flex;align-items:center;justify-content:center;gap:8px;
+  -webkit-tap-highlight-color:transparent;
+}
+.btn:hover{border-color:var(--accent);background:#1a2740;}
+.btn:active{transform:translateY(1px);}
+.btn.primary{background:linear-gradient(180deg,#2f81f7,#1d5fc4);border-color:#3f8ffb;color:#fff;box-shadow:0 8px 22px -12px rgba(47,129,247,1);}
+.btn.primary:hover{background:linear-gradient(180deg,#3d8ef8,#2368d0);}
+.btn.success{background:linear-gradient(180deg,#22c55e,#158a41);border-color:#2fdc6f;color:#03210f;}
+.btn.danger{background:linear-gradient(180deg,#ef4444,#b91c1c);border-color:#f87171;color:#fff;}
+.btn.block{width:100%;}
+.btn-row{display:flex;gap:9px;flex-wrap:wrap;margin-top:12px;}
+.btn-row .btn{flex:1 1 auto;min-width:130px;}
+
+/* ============================================================
+   EZ DEBUG LEDs
+   ============================================================ */
+.led-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px;}
+.led{
+  background:var(--panel-3);border:1px solid var(--border);border-radius:9px;
+  padding:12px 10px;text-align:center;cursor:pointer;transition:.2s;
+  -webkit-tap-highlight-color:transparent;
+}
+.led:hover{border-color:var(--border-2);}
+.led .lamp{
+  width:34px;height:34px;border-radius:50%;margin:0 auto 8px;
+  background:#1b2537;border:2px solid #2b3a55;transition:.25s;
+}
+.led .lname{font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:.06em;}
+.led .lidx{font-family:var(--mono);font-size:10px;color:var(--muted);}
+.led.on{border-color:var(--green);background:rgba(34,197,94,.1);}
+.led.on .lamp{background:radial-gradient(circle at 35% 30%,#d9ffe7,#22c55e 60%,#0c7a37);box-shadow:0 0 22px rgba(34,197,94,.85);border-color:#7bf3ab;}
+.led.err{border-color:var(--red);background:rgba(239,68,68,.1);}
+.led.err .lamp{background:radial-gradient(circle at 35% 30%,#ffd9d9,#ef4444 60%,#8b1111);box-shadow:0 0 22px rgba(239,68,68,.9);border-color:#ff9a9a;}
+
+.seq-track{
+  display:flex;gap:6px;flex-wrap:wrap;align-items:center;
+  font-family:var(--mono);font-size:11px;color:var(--muted);
+  background:#0a1220;border:1px dashed var(--border-2);border-radius:8px;padding:10px;margin-bottom:12px;
+  min-height:44px;
+}
+.seq-pill{background:rgba(47,129,247,.18);border:1px solid rgba(47,129,247,.55);color:#bcd9ff;padding:3px 9px;border-radius:999px;font-weight:700;}
+
+/* ============================================================
+   UEFI SIMULADO
+   ============================================================ */
+.uefi{
+  border:1px solid #2b3f63;border-radius:10px;overflow:hidden;
+  background:#0b1220;box-shadow:0 20px 50px -30px #000;
+}
+.uefi-bar{
+  background:linear-gradient(180deg,#16233b,#0e1729);
+  border-bottom:1px solid #23324e;
+  padding:9px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+}
+.uefi-brand{font-family:var(--mono);font-size:12px;font-weight:700;color:#9dc4ff;letter-spacing:.1em;}
+.uefi-mode{font-family:var(--mono);font-size:10.5px;color:var(--muted);letter-spacing:.12em;}
+.uefi-tabs{display:flex;gap:4px;overflow-x:auto;padding:8px 10px;border-bottom:1px solid #1b2942;background:#0a1120;}
+.uefi-tab{
+  font-family:var(--mono);font-size:11px;color:var(--muted);padding:6px 11px;border-radius:6px;
+  border:1px solid transparent;white-space:nowrap;
+}
+.uefi-tab.active{color:#fff;background:rgba(47,129,247,.2);border-color:rgba(47,129,247,.5);}
+.uefi-body{padding:12px;}
+
+.uefi-card{
+  background:#0d1728;border:1px solid #1e2d47;border-radius:8px;padding:11px;margin-bottom:11px;
+}
+.uefi-card h4{
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.08em;text-transform:uppercase;
+  color:var(--accent-2);margin-bottom:9px;display:flex;align-items:center;gap:7px;
+}
+.uefi-card h4::before{content:"▸";color:var(--accent);}
+
+.kv{display:flex;justify-content:space-between;gap:10px;font-family:var(--mono);font-size:11.5px;padding:5px 0;border-bottom:1px dashed #1a2740;flex-wrap:wrap;}
+.kv:last-child{border-bottom:none;}
+.kv .k{color:var(--muted);}
+.kv .v{color:#dbeafe;font-weight:600;}
+
+/* Sliders monitor */
+.slider-row{margin-bottom:13px;}
+.slider-top{display:flex;justify-content:space-between;align-items:center;font-family:var(--mono);font-size:11.5px;margin-bottom:5px;gap:8px;}
+.slider-top .lbl{color:var(--muted);}
+.slider-top .val{font-weight:700;}
+.slider-top .val.ok{color:var(--green);}
+.slider-top .val.bad{color:var(--red);}
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:7px;border-radius:99px;
+  background:#16233b;outline:none;border:1px solid #23324e;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;appearance:none;width:22px;height:22px;border-radius:50%;
+  background:linear-gradient(160deg,#5aa2ff,#2f81f7);border:2px solid #cfe4ff;cursor:pointer;
+  box-shadow:0 0 12px rgba(47,129,247,.7);
+}
+input[type=range]::-moz-range-thumb{
+  width:20px;height:20px;border-radius:50%;background:#2f81f7;border:2px solid #cfe4ff;cursor:pointer;
+}
+.safe-hint{font-family:var(--mono);font-size:10px;color:var(--muted);margin-top:3px;}
+
+/* Boot list */
+.boot-item{
+  display:flex;align-items:center;gap:9px;
+  background:#0f1a2d;border:1px solid #1e2d47;border-radius:8px;
+  padding:9px 10px;margin-bottom:7px;font-family:var(--mono);font-size:11.5px;
+}
+.boot-item.first{border-color:rgba(34,197,94,.55);background:rgba(34,197,94,.08);}
+.boot-num{
+  width:22px;height:22px;border-radius:5px;background:#16233b;border:1px solid #2a3b5c;
+  display:grid;place-items:center;font-weight:700;font-size:11px;flex:0 0 auto;
+}
+.boot-item.first .boot-num{background:var(--green);color:#03210f;border-color:var(--green);}
+.boot-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.boot-btns{display:flex;gap:4px;flex:0 0 auto;}
+.mini-btn{
+  width:28px;height:28px;border-radius:6px;background:#16233b;border:1px solid #2a3b5c;
+  color:var(--text);font-size:13px;cursor:pointer;display:grid;place-items:center;transition:.15s;
+}
+.mini-btn:hover{border-color:var(--accent);color:#fff;}
+.mini-btn:disabled{opacity:.3;cursor:not-allowed;}
+
+/* Switches */
+.switch-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  background:#0f1a2d;border:1px solid #1e2d47;border-radius:8px;padding:11px;margin-bottom:9px;
+}
+.switch-row.on{border-color:rgba(34,197,94,.55);background:rgba(34,197,94,.07);}
+.switch-txt strong{display:block;font-family:var(--mono);font-size:12px;}
+.switch-txt span{font-size:11px;color:var(--muted);}
+.switch{
+  flex:0 0 auto;width:54px;height:29px;border-radius:99px;background:#1b2537;border:1px solid #2b3a55;
+  position:relative;cursor:pointer;transition:.22s;
+}
+.switch::after{
+  content:"";position:absolute;top:2px;left:2px;width:23px;height:23px;border-radius:50%;
+  background:#64748b;transition:.22s;
+}
+.switch.on{background:rgba(34,197,94,.28);border-color:var(--green);}
+.switch.on::after{left:27px;background:var(--green);box-shadow:0 0 12px rgba(34,197,94,.9);}
+
+/* ============================================================
+   TERMINAL / LOG
+   ============================================================ */
+.terminal{
+  background:#05090f;border:1px solid var(--border);border-radius:8px;
+  padding:11px;font-family:var(--mono);font-size:11.5px;line-height:1.65;
+  max-height:260px;overflow-y:auto;color:#8ff0c0;white-space:pre-wrap;word-break:break-word;
+}
+.terminal::-webkit-scrollbar{width:7px;}
+.terminal::-webkit-scrollbar-thumb{background:#23324e;border-radius:9px;}
+.terminal .t-red{color:#ff8b8b;}
+.terminal .t-amber{color:#ffd27a;}
+.terminal .t-blue{color:#8fc4ff;}
+.terminal .t-dim{color:#4d6183;}
+
+/* ============================================================
+   RESULTADOS / VEREDICTOS
+   ============================================================ */
+.verdict{
+  border-radius:9px;padding:12px;margin-top:12px;border:1px solid var(--border-2);
+  font-size:13px;display:none;
+}
+.verdict.show{display:block;animation:fade .3s ease;}
+.verdict.ok{background:rgba(34,197,94,.1);border-color:rgba(34,197,94,.55);color:#c8f7d8;}
+.verdict.bad{background:rgba(239,68,68,.1);border-color:rgba(239,68,68,.55);color:#ffd0d0;}
+.verdict.warn{background:rgba(245,158,11,.1);border-color:rgba(245,158,11,.55);color:#ffe6b8;}
+.verdict strong{display:block;font-family:var(--mono);font-size:12.5px;letter-spacing:.05em;margin-bottom:5px;text-transform:uppercase;}
+
+/* ============================================================
+   OPCIONES / SELECTS
+   ============================================================ */
+select, input[type=text], input[type=number]{
+  background:#0a1220;border:1px solid var(--border-2);color:#fff;
+  font-family:var(--mono);font-size:13px;padding:10px 11px;border-radius:7px;outline:none;
+  width:100%;transition:.2s;
+}
+select:focus,input[type=text]:focus,input[type=number]:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(47,129,247,.2);}
+label.field{display:block;margin-bottom:11px;}
+label.field .flabel{display:block;font-family:var(--mono);font-size:11px;color:var(--muted);margin-bottom:5px;letter-spacing:.05em;text-transform:uppercase;}
+
+.opt-list{display:grid;gap:8px;margin-top:10px;}
+.opt{
+  background:#0f1a2d;border:1px solid #1e2d47;border-radius:8px;padding:11px;
+  cursor:pointer;font-size:12.5px;transition:.18s;display:flex;gap:9px;align-items:flex-start;
+  -webkit-tap-highlight-color:transparent;
+}
+.opt:hover{border-color:var(--border-2);}
+.opt.sel{border-color:var(--accent);background:rgba(47,129,247,.12);}
+.opt.ok{border-color:var(--green);background:rgba(34,197,94,.12);}
+.opt.no{border-color:var(--red);background:rgba(239,68,68,.1);}
+.opt .okey{
+  flex:0 0 auto;width:22px;height:22px;border-radius:6px;background:#16233b;border:1px solid #2a3b5c;
+  display:grid;place-items:center;font-family:var(--mono);font-size:11px;font-weight:700;
+}
+.opt.sel .okey{background:var(--accent);border-color:var(--accent);color:#fff;}
+.opt.ok .okey{background:var(--green);border-color:var(--green);color:#03210f;}
+.opt.no .okey{background:var(--red);border-color:var(--red);color:#fff;}
+
+/* ============================================================
+   SMART TABLE
+   ============================================================ */
+.smart-grid{display:grid;gap:10px;grid-template-columns:1fr;}
+.smart-input{background:#0f1a2d;border:1px solid #1e2d47;border-radius:8px;padding:11px;}
+.smart-input .sid{font-family:var(--mono);font-size:11.5px;font-weight:700;color:#bcd9ff;display:block;margin-bottom:2px;}
+.smart-input .sdesc{font-size:10.5px;color:var(--muted);display:block;margin-bottom:8px;line-height:1.4;}
+
+/* ============================================================
+   INFORME
+   ============================================================ */
+.summary-grid{display:grid;gap:9px;grid-template-columns:1fr;margin-bottom:14px;}
+.sum-card{
+  background:#0f1a2d;border:1px solid #1e2d47;border-radius:8px;padding:11px;
+}
+.sum-card .st{font-family:var(--mono);font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.sum-card .sv{font-family:var(--mono);font-size:13px;font-weight:700;}
+.sum-card .sv.ok{color:var(--green);}
+.sum-card .sv.bad{color:var(--red);}
+.sum-card .sv.pend{color:var(--amber);}
+
+.score-box{
+  text-align:center;padding:20px 14px;border-radius:10px;
+  background:linear-gradient(160deg,rgba(47,129,247,.14),rgba(34,211,238,.05));
+  border:1px solid rgba(47,129,247,.4);margin-bottom:14px;
+}
+.score-num{font-family:var(--mono);font-size:2.6rem;font-weight:700;line-height:1;color:#fff;}
+.score-num small{font-size:1rem;color:var(--muted);}
+.score-lbl{font-family:var(--mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin-top:7px;}
+
+/* ============================================================
+   TOAST
+   ============================================================ */
+.toast{
+  position:fixed;left:50%;bottom:22px;transform:translate(-50%,120%);
+  background:#101c30;border:1px solid var(--border-2);border-left:4px solid var(--accent);
+  border-radius:9px;padding:12px 16px;font-size:13px;z-index:9999;
+  box-shadow:0 18px 40px -18px #000;max-width:92vw;transition:transform .35s cubic-bezier(.4,0,.2,1);
+}
+.toast.show{transform:translate(-50%,0);}
+.toast.ok{border-left-color:var(--green);}
+.toast.err{border-left-color:var(--red);}
+.toast.warn{border-left-color:var(--amber);}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media(min-width:640px){
+  .app{padding:20px 18px 100px;}
+  .panel{padding:18px;}
+  .led-grid{grid-template-columns:repeat(4,1fr);}
+  .smart-grid{grid-template-columns:repeat(2,1fr);}
+  .summary-grid{grid-template-columns:repeat(2,1fr);}
+}
+@media(min-width:900px){
+  .app{padding:26px 24px 110px;}
+  .app-header{padding:22px 24px 18px;}
+  .panel{padding:22px;}
+  .smart-grid{grid-template-columns:repeat(4,1fr);}
+  .summary-grid{grid-template-columns:repeat(3,1fr);}
+  .uefi-body{padding:16px;}
+  .uefi-layout{display:grid;grid-template-columns:1fr 1fr;gap:12px;align-items:start;}
+}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ================= HEADER ================= -->
+  <header class="app-header">
+    <div class="brand">
+      <span class="chip">Nivel Técnico</span>
+      <span class="chip warn">Manual N°16</span>
+    </div>
+    <h1>Simulador Interactivo de Diagnóstico de Hardware y BIOS/UEFI</h1>
+    <p class="sub">Niveles 0 · 1 · 2 — Protocolo ESD, Matriz ATX ±5%, Telemetría UEFI, MemTest86+ y Triage S.M.A.R.T.</p>
+
+    <div class="global-progress">
+      <div class="gp-top">
+        <span>PROGRESO DE LA PRÁCTICA</span>
+        <span id="gpText">0 / 8 desafíos</span>
+      </div>
+      <div class="gp-track"><div class="gp-fill" id="gpFill"></div></div>
+    </div>
+  </header>
+
+  <!-- ================= TABS ================= -->
+  <nav class="tabs" id="tabs">
+    <button class="tab active" data-tab="mod1"><span class="dot"></span>① Nivel 0 · Físico/Eléctrico</button>
+    <button class="tab" data-tab="mod2"><span class="dot"></span>② Nivel 1 · UEFI / BIOS</button>
+    <button class="tab" data-tab="mod3"><span class="dot"></span>③ Nivel 2 · Bare-Metal</button>
+    <button class="tab" data-tab="mod4"><span class="dot"></span>④ Informe Técnico</button>
+  </nav>
+
+  <main>
+
+  <!-- ============================================================
+       MÓDULO 1
+       ============================================================ -->
+  <section id="mod1" class="module active">
+
+    <!-- PASO 1: ESD -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="step-badge">1</div>
+        <div>
+          <div class="panel-title">Protocolo de Seguridad ESD y Desconexión Total</div>
+          <div class="panel-desc">Nivel 0 — Antes de manipular cualquier componente interno. Las descargas electrostáticas causan daño irreversible a los circuitos integrados.</div>
+        </div>
+      </div>
+
+      <div class="check-item" id="chk1">
+        <div class="check-box">✓</div>
+        <div class="check-text">
+          <strong>Desconexión total de la red eléctrica</strong>
+          <span>Verificar que el equipo esté completamente desconectado del tomacorriente y sin batería en portátiles.</span>
+        </div>
+      </div>
+
+      <div class="check-item" id="chk2">
+        <div class="check-box">✓</div>
+        <div class="check-text">
+          <strong>Descarga de energía estática residual</strong>
+          <span>Colocar pulsera antiestática conectada a tierra o descargar tocando una superficie metálica conectada a tierra.</span>
+        </div>
+      </div>
+
+      <div class="verdict" id="esdVerdict"></div>
+    </div>
+
+    <!-- PASO 2: MULTÍMETRO ATX -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="step-badge">2</div>
+        <div>
+          <div class="panel-title">Multímetro Virtual — Matriz de Tolerancia ATX (±5%)</div>
+          <div class="panel-desc">Configurar el multímetro en VDC. Punta negra en pin de tierra (cable negro), punta roja en el rail a medir. Nunca cortocircuitar dos pines de tensión diferente.</div>
+        </div>
+      </div>
+
+      <!-- Rail +12V -->
+      <div class="rail">
+        <div class="rail-head">
+          <span class="rail-name">Rail +12V</span>
+          <span class="rail-badge" id="badge-12">SIN LECTURA</span>
+        </div>
+        <span class="rail-use">Uso: CPU, GPU, ventiladores, motores mecánicos.</span>
+        <div class="rail-bar">
+          <div class="rail-zone" id="zone-12"></div>
+          <div class="rail-marker" id="marker-12"></div>
+        </div>
+        <div class="rail-limits"><span>11.40V mín</span><span>12.00V nom</span><span>12.60V máx</span></div>
+        <div class="rail-input">
+          <input type="number" step="0.01" id="in-12" placeholder="0.00" inputmode="decimal">
+          <span class="unit">VDC</span>
+        </div>
+      </div>
+
+      <!-- Rail +5V -->
+      <div class="rail">
+        <div class="rail-head">
+          <span class="rail-name">Rail +5V</span>
+          <span class="rail-badge" id="badge-5">SIN LECTURA</span>
+        </div>
+        <span class="rail-use">Uso: Lógica digital, puertos USB, chipset.</span>
+        <div class="rail-bar">
+          <div class="rail-zone" id="zone-5"></div>
+          <div class="rail-marker" id="marker-5"></div>
+        </div>
+        <div class="rail-limits"><span>4.75V mín</span><span>5.00V nom</span><span>5.25V máx</span></div>
+        <div class="rail-input">
+          <input type="number" step="0.01" id="in-5" placeholder="0.00" inputmode="decimal">
+          <span class="unit">VDC</span>
+        </div>
+      </div>
+
+      <!-- Rail +3.3V -->
+      <div class="rail">
+        <div class="rail-head">
+          <span class="rail-name">Rail +3.3V</span>
+          <span class="rail-badge" id="badge-33">SIN LECTURA</span>
+        </div>
+        <span class="rail-use">Uso: Memoria RAM, circuitos lógicos modernos.</span>
+        <div class="rail-bar">
+          <div class="rail-zone" id="zone-33"></div>
+          <div class="rail-marker" id="marker-33"></div>
+        </div>
+        <div class="rail-limits"><span>3.14V mín</span><span>3.30V nom</span><span>3.47V máx</span></div>
+        <div class="rail-input">
+          <input type="number" step="0.01" id="in-33" placeholder="0.00" inputmode="decimal">
+          <span class="unit">VDC</span>
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="btnSimFuente">⚡ Simular lectura del multímetro</button>
+        <button class="btn primary" id="btnEvalATX">🔍 Evaluar tolerancias</button>
+      </div>
+
+      <div class="verdict" id="atxVerdict"></div>
+    </div>
+
+    <!-- PASO 3: EZ DEBUG LEDS -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="step-badge">3</div>
+        <div>
+          <div class="panel-title">EZ Debug LEDs — Secuencia de Inicialización Física</div>
+          <div class="panel-desc">Orden correcto de inicialización: <strong>CPU → DRAM → VGA → BOOT</strong>. Un LED encendido permanentemente indica el componente exacto que detuvo el arranque.</div>
+        </div>
+      </div>
+
+      <div class="seq-track" id="seqTrack">
+        <span class="t-dim">SECUENCIA REGISTRADA:</span>
+        <span>—</span>
+      </div>
+
+      <div class="led-grid">
+        <div class="led" data-led="CPU"><div class="lamp"></div><div class="lname">CPU</div><div class="lidx">LED 1</div></div>
+        <div class="led" data-led="DRAM"><div class="lamp"></div><div class="lname">DRAM</div><div class="lidx">LED 2</div></div>
+        <div class="led" data-led="VGA"><div class="lamp"></div><div class="lname">VGA</div><div class="lidx">LED 3</div></div>
+        <div class="led" data-led="BOOT"><div class="lamp"></div><div class="lname">BOOT</div><div class="lidx">LED 4</div></div>
+      </div>
+
+      <div class="verdict" id="seqVerdict"></div>
+
+      <div id="casoEZ" style="display:none;margin-top:16px;">
+        <div class="uefi-card">
+          <h4>Caso Clínico de Arranque</h4>
+          <p id="casoEZTexto" style="font-size:13px;line-height:1.6;"></p>
+        </div>
+        <div class="opt-list" id="casoEZOpts"></div>
+        <div class="verdict" id="casoEZVerdict"></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================
+       MÓDULO 2
+       ============================================================ -->
+  <section id="mod2" class="module">
+
+    <div class="panel" style="padding-bottom:8px;">
+      <div class="panel-head">
+        <div class="step-badge green">UEFI</div>
+        <div>
+          <div class="panel-title">Interfaz UEFI Moderna — Easy Mode (Simulación ASUS)</div>
+          <div class="panel-desc">Acceso: <strong>Supr/Delete</strong> (Desktop) · <strong>F2</strong> (Laptop) · Alternativas: F10 (HP), F1 (Lenovo), Esc. Si <em>Fast Boot</em> está activo, reiniciar desde Windows → Inicio avanzado → Configuración de firmware UEFI.</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="uefi">
+      <div class="uefi-bar">
+        <span class="uefi-brand">ASUS</span>
+        <span class="uefi-mode">EASY MODE</span>
+        <span class="uefi-mode" id="uefiClock">--:--</span>
+      </div>
+      <div class="uefi-tabs">
+        <span class="uefi-tab active">Main</span>
+        <span class="uefi-tab">Advanced</span>
+        <span class="uefi-tab">Boot</span>
+        <span class="uefi-tab">Security</span>
+        <span class="uefi-tab">H/W Monitor</span>
+        <span class="uefi-tab">Save &amp; Exit</span>
+      </div>
+
+      <div class="uefi-body">
+
+        <div class="uefi-layout">
+
+          <!-- Columna izquierda -->
+          <div>
+            <!-- System Information -->
+            <div class="uefi-card">
+              <h4>System Information</h4>
+              <div class="kv"><span class="k">Versión Firmware</span><span class="v">F12 (D094-13300-12900K)</span></div>
+              <div class="kv"><span class="k">Procesador</span><span class="v">Intel Core i9-12900K</span></div>
+              <div class="kv"><span class="k">Base Clock</span><span class="v">3.20 GHz</span></div>
+              <div class="kv"><span class="k">Memoria Total</span><span class="v">32 GB DDR4-3200</span></div>
+              <div class="kv"><span class="k">XMP Profile</span><span class="v" style="color:#f59e0b;">Disabled</span></div>
+            </div>
+
+            <!-- Hardware Monitor -->
+            <div class="uefi-card">
+              <h4>Hardware Monitor (PC Health)</h4>
+
+              <div class="slider-row">
+                <div class="slider-top">
+                  <span class="lbl">CPU Temperature</span>
+                  <span class="val" id="valCpuT">--</span>
+                </div>
+                <input type="range" id="slCpuT" min="20" max="100" step="1" value="45">
+                <div class="safe-hint">Rango seguro: 20 °C – 80 °C</div>
+              </div>
+
+              <div class="slider-row">
+                <div class="slider-top">
+                  <span class="lbl">System Temperature</span>
+                  <span class="val" id="valSysT">--</span>
+                </div>
+                <input type="range" id="slSysT" min="20" max="70" step="1" value="38">
+                <div class="safe-hint">Rango seguro: 20 °C – 50 °C</div>
+              </div>
+
+              <div class="slider-row">
+                <div class="slider-top">
+                  <span class="lbl">CPU Vcore</span>
+                  <span class="val" id="valVcore">--</span>
+                </div>
+                <input type="range" id="slVcore" min="1.00" max="1.50" step="0.01" value="1.25">
+                <div class="safe-hint">Rango seguro: 1.10 V – 1.40 V</div>
+              </div>
+
+              <div class="slider-row" style="margin-bottom:4px;">
+                <div class="slider-top">
+                  <span class="lbl">DRAM Voltage</span>
+                  <span class="val" id="valDram">--</span>
+                </div>
+                <input type="range" id="slDram" min="1.10" max="1.60" step="0.01" value="1.35">
+                <div class="safe-hint">Rango seguro: 1.30 V – 1.45 V</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Columna derecha -->
+          <div>
+            <!-- Boot Priority -->
+            <div class="uefi-card">
+              <h4>Boot Priority</h4>
+              <div id="bootList"></div>
+              <div class="safe-hint" style="margin-top:6px;">Objetivo: colocar la unidad USB booteable de diagnóstico en la posición 1.</div>
+            </div>
+
+            <!-- Security -->
+            <div class="uefi-card">
+              <h4>Security — Auditoría Windows 11 Ready</h4>
+
+              <div class="switch-row" id="swSecureRow">
+                <div class="switch-txt">
+                  <strong>Secure Boot</strong>
+                  <span>Debe estar [Enabled] para estándares modernos del SO.</span>
+                </div>
+                <div class="switch" id="swSecure"></div>
+              </div>
+
+              <div class="switch-row" id="swTpmRow">
+                <div class="switch-txt">
+                  <strong>TPM 2.0 / fTPM</strong>
+                  <span>Hardware criptográfico requerido para BitLocker y Windows 11.</span>
+                </div>
+                <div class="switch" id="swTpm"></div>
+              </div>
+            </div>
+
+            <!-- Save -->
+            <div class="uefi-card">
+              <h4>Save &amp; Exit</h4>
+              <div class="btn-row" style="margin-top:0;">
+                <button class="btn primary" id="btnF10">💾 F10 — Guardar y Reiniciar</button>
+                <button class="btn" id="btnResetUEFI">↺ Restablecer</button>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="verdict" id="uefiVerdict"></div>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================
+       MÓDULO 3
+       ============================================================ -->
+  <section id="mod3" class="module">
+
+    <!-- MemTest86+ -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="step-badge">1</div>
+        <div>
+          <div class="panel-title">Protocolo de Testeo de RAM — MemTest86+</div>
+          <div class="panel-desc">Diagnóstico Bare-Metal (Live USB). Requisito mínimo estricto: completar 1 pasada completa (4 fases). Un solo error es inaceptable en entorno de producción.</div>
+        </div>
+      </div>
+
+      <div class="btn-row" style="margin-top:0;">
+        <button class="btn primary" id="btnMemTest">▶ Ejecutar 1 pasada completa (4 fases)</button>
+        <button class="btn" id="btnMemReset">↺ Limpiar</button>
+      </div>
+
+      <div class="terminal" id="memTerm" style="margin-top:12px;">
+<span class="t-dim">MemTest86+ v6.10 — Esperando inicio de pruebas...</span>
+      </div>
+
+      <div id="memDiagBox" style="display:none;margin-top:14px;">
+        <label class="field">
+          <span class="flabel">Diagnóstico forense — Interpretación del resultado</span>
+          <select id="memDiagSelect">
+            <option value="">— Seleccionar conclusión técnica —</option>
+            <option value="ram-ok">Memoria RAM operativa dentro de especificaciones. No se requiere acción.</option>
+            <option value="cpu-mc">Errores en direcciones bajas → problema estructural en el controlador de memoria integrado en el CPU (IMC).</option>
+            <option value="dimm">Errores concentrados en un canal específico → módulo RAM defectuoso o daño físico en la ranura DIMM.</option>
+          </select>
+        </label>
+        <button class="btn primary block" id="btnMemValidar">✔ Validar diagnóstico</button>
+        <div class="verdict" id="memVerdict"></div>
+      </div>
+    </div>
+
+    <!-- S.M.A.R.T. -->
+    <div class="panel">
+      <div class="panel-head">
+        <div class="step-badge">2</div>
+        <div>
+          <div class="panel-title">Auditoría S.M.A.R.T. — Matriz de Triage (HDD / SSD)</div>
+          <div class="panel-desc">Herramientas recomendadas: CrystalDiskInfo, smartctl. <strong>Regla de Oro:</strong> si cualquier atributo «Pre-falla» (ID 05, C5, C6) muestra un valor bruto distinto de cero, la estructura lógica está en estado crítico → reemplazo inmediato.</div>
+        </div>
+      </div>
+
+      <div class="smart-grid">
+        <div class="smart-input">
+          <span class="sid">ID 05 — Reallocated Sectors Count</span>
+          <span class="sdesc">Sectores defectuosos que han sido reasignados forzosamente.</span>
+          <input type="number" id="smart05" min="0" value="0" inputmode="numeric" placeholder="0">
+        </div>
+        <div class="smart-input">
+          <span class="sid">ID C5 — Current Pending Sector</span>
+          <span class="sdesc">Sectores altamente inestables esperando reasignación.</span>
+          <input type="number" id="smartC5" min="0" value="0" inputmode="numeric" placeholder="0">
+        </div>
+        <div class="smart-input">
+          <span class="sid">ID C6 — Uncorrectable Sector Count</span>
+          <span class="sdesc">Errores graves de lectura/escritura totalmente irreparables.</span>
+          <input type="number" id="smartC6" min="0" value="0" inputmode="numeric" placeholder="0">
+        </div>
+        <div class="smart-input">
+          <span class="sid">ID C2 — Temperature</span>
+          <span class="sdesc">Alerta térmica: &gt; 50 °C en HDD / &gt; 70 °C en SSD.</span>
+          <input type="number" id="smartTemp" min="0" value="35" inputmode="numeric" placeholder="35">
+        </div>
+      </div>
+
+      <div class="btn-row">
+        <button class="btn" id="btnSmartCaso">🎲 Generar caso clínico aleatorio</button>
+        <button class="btn primary" id="btnSmartEval">🔬 Aplicar Regla de Oro S.M.A.R.T.</button>
+      </div>
+
+      <div class="verdict" id="smartVerdict"></div>
+    </div>
+
+  </section>
+
+  <!-- ============================================================
+       MÓDULO 4 — INFORME
+       ============================================================ -->
+  <section id="mod4" class="module">
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="step-badge green">✓</div>
+        <div>
+          <div class="panel-title">Datos del Alumno y Generación del Informe Técnico</div>
+          <div class="panel-desc">Completar los datos para emitir el comprobante descargable que se adjuntará en Google Classroom.</div>
+        </div>
+      </div>
+
+      <label class="field">
+        <span class="flabel">Nombre y Apellido</span>
+        <input type="text" id="alumnoNombre" placeholder="Ej.: Juan Pérez" autocomplete="name">
+      </label>
+
+      <label class="field">
+        <span class="flabel">Curso / División</span>
+        <input type="text" id="alumnoCurso" placeholder="Ej.: 3° A — Técnica en Informática" autocomplete="off">
+      </label>
+
+      <label class="field" style="margin-bottom:0;">
+        <span class="flabel">Establecimiento / Docente (opcional)</span>
+        <input type="text" id="alumnoInst" placeholder="Ej.: E.E.S.T. N° 1 — Prof. Gómez" autocomplete="off">
+      </label>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="step-badge">Σ</div>
+        <div>
+          <div class="panel-title">Resumen de Resultados de la Práctica</div>
+          <div class="panel-desc">Estado consolidado de los tres niveles de diagnóstico.</div>
+        </div>
+      </div>
+
+      <div class="score-box">
+        <div class="score-num" id="scoreNum">0<small>/100</small></div>
+        <div class="score-lbl">Puntaje de Validación Técnica</div>
+      </div>
+
+      <div class="summary-grid" id="summaryGrid"></div>
+
+      <div class="btn-row">
+        <button class="btn success block" id="btnGenerarDoc">📄 Generar Informe Técnico Descargable (.doc)</button>
+      </div>
+
+      <div class="verdict" id="docVerdict"></div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <div class="step-badge red">!</div>
+        <div>
+          <div class="panel-title">Recordatorio de Seguridad</div>
+          <div class="panel-desc">Nunca manipular componentes sensibles sin descarga previa. Nunca cortocircuitar dos pines de tensión diferente. Registrar todos los valores exactos en la hoja de laboratorio.</div>
+        </div>
+      </div>
+    </div>
+
+  </section>
+
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+/* ============================================================
+   ESTADO GLOBAL
+   ============================================================ */
+const STATE = {
+  esd: { disconnected:false, grounded:false, done:false },
+  atx: { v12:null, v5:null, v33:null, evaluated:false, verdict:null },
+  ez:  { sequence:[], orderDone:false, caseDone:false, caseId:null, caseAnswer:null },
+  uefi:{ cpuT:45, sysT:38, vcore:1.25, dram:1.35, boot:['SSD: Windows 11','HDD: Datos','CD/DVD: Unidad óptica','USB: MemTest86+ (Diagnóstico)'],
+         secureBoot:false, tpm:false, saved:false },
+  mem: { scenario:null, executed:false, answer:null, correct:false },
+  smart:{ id05:0, c5:0, c6:0, temp:35, evaluated:false, verdict:null }
+};
+
+const CHECKS_TOTAL = 8;
+let completedChecks = 0;
+
+/* ============================================================
+   UTILIDADES
+   ============================================================ */
+function $(id){ return document.getElementById(id); }
+function qsa(sel,ctx){ return Array.from((ctx||document).querySelectorAll(sel)); }
+
+function toast(msg, type){
+  const t = $('toast');
+  t.textContent = msg;
+  t.className = 'toast show ' + (type||'');
+  clearTimeout(t._tm);
+  t._tm = setTimeout(()=>{ t.className='toast '+(type||''); }, 3200);
+}
+
+function setVerdict(el, type, title, body){
+  el.className = 'verdict show ' + type;
+  el.innerHTML = '<strong>' + title + '</strong>' + body;
+}
+
+function updateProgress(){
+  const done = [
+    STATE.esd.done,
+    STATE.atx.evaluated && STATE.atx.verdict === 'ok',
+    STATE.ez.orderDone,
+    STATE.ez.caseDone,
+    STATE.uefi.saved,
+    STATE.mem.correct,
+    STATE.smart.evaluated,
+    STATE.smart.verdict === 'critical' || STATE.smart.verdict === 'ok' || STATE.smart.verdict === 'warning'
+  ].filter(Boolean).length;
+
+  completedChecks = Math.min(done, CHECKS_TOTAL);
+  const pct = Math.round((completedChecks / CHECKS_TOTAL) * 100);
+  $('gpFill').style.width = pct + '%';
+  $('gpText').textContent = completedChecks + ' / ' + CHECKS_TOTAL + ' desafíos';
+
+  // marcar pestañas completadas
+  const m1done = STATE.esd.done && STATE.atx.evaluated && STATE.ez.orderDone && STATE.ez.caseDone;
+  const m2done = STATE.uefi.saved;
+  const m3done = STATE.mem.correct && STATE.smart.evaluated;
+
+  qsa('.tab')[0].classList.toggle('done', m1done);
+  qsa('.tab')[1].classList.toggle('done', m2done);
+  qsa('.tab')[2].classList.toggle('done', m3done);
+
+  actualizarResumen();
+  actualizarScore();
+}
+
+/* ============================================================
+   NAVEGACIÓN POR TABS
+   ============================================================ */
+qsa('.tab').forEach(tab=>{
+  tab.addEventListener('click', ()=>{
+    qsa('.tab').forEach(t=>t.classList.remove('active'));
+    qsa('.module').forEach(m=>m.classList.remove('active'));
+    tab.classList.add('active');
+    $(tab.dataset.tab).classList.add('active');
+    window.scrollTo({top:0, behavior:'smooth'});
+  });
+});
+
+/* ============================================================
+   MÓDULO 1 — PASO 1: ESD
+   ============================================================ */
+['chk1','chk2'].forEach((id,idx)=>{
+  const el = $(id);
+  el.addEventListener('click', ()=>{
+    el.classList.toggle('checked');
+    if(idx===0) STATE.esd.disconnected = el.classList.contains('checked');
+    else STATE.esd.grounded = el.classList.contains('checked');
+
+    if(STATE.esd.disconnected && STATE.esd.grounded){
+      STATE.esd.done = true;
+      setVerdict($('esdVerdict'),'ok','✔ Protocolo ESD completado',
+        'Equipo desenergizado y cuerpo descargado a tierra. Es seguro manipular componentes internos. Las descargas electrostáticas pueden causar daño irreversible a los circuitos integrados.');
+    } else {
+      STATE.esd.done = false;
+      $('esdVerdict').className = 'verdict';
+    }
+    updateProgress();
+  });
+});
+
+/* ============================================================
+   MÓDULO 1 — PASO 2: MULTÍMETRO ATX
+   ============================================================ */
+const RAILS = {
+  '12': { label:'+12V', min:11.40, max:12.60, nom:12.00, rMin:10.20, rMax:13.80, dec:2 },
+  '5':  { label:'+5V',  min:4.75,  max:5.25,  nom:5.00,  rMin:4.00,  rMax:6.00,  dec:2 },
+  '33': { label:'+3.3V',min:3.14,  max:3.47,  nom:3.30,  rMin:2.60,  rMax:4.00,  dec:2 }
+};
+
+function pctFor(key, val){
+  const r = RAILS[key];
+  const p = ((val - r.rMin) / (r.rMax - r.rMin)) * 100;
+  return Math.max(0, Math.min(100, p));
+}
+
+function initRailZones(){
+  Object.keys(RAILS).forEach(k=>{
+    const r = RAILS[k];
+    const left = pctFor(k, r.min);
+    const right = pctFor(k, r.max);
+    const zone = $('zone-'+k);
+    zone.style.left = left + '%';
+    zone.style.width = (right-left) + '%';
+  });
+}
+
+function updateRail(key){
+  const input = $('in-'+key);
+  const badge = $('badge-'+key);
+  const marker = $('marker-'+key);
+  const r = RAILS[key];
+  const raw = input.value.trim();
+
+  if(raw === '' || isNaN(parseFloat(raw))){
+    badge.className = 'rail-badge';
+    badge.textContent = 'SIN LECTURA';
+    marker.className = 'rail-marker';
+    marker.style.left = '50%';
+    STATE.atx['v'+key] = null;
+    return;
+  }
+
+  const val = parseFloat(raw);
+  STATE.atx['v'+key] = val;
+  marker.style.left = pctFor(key,val) + '%';
+
+  if(val >= r.min && val <= r.max){
+    badge.className = 'rail-badge ok';
+    badge.textContent = '✔ ' + val.toFixed(2) + 'V — OK';
+    marker.className = 'rail-marker ok';
+  } else {
+    badge.className = 'rail-badge bad';
+    const dir = val < r.min ? 'BAJO' : 'ALTO';
+    badge.textContent = '✖ ' + val.toFixed(2) + 'V — ' + dir;
+    marker.className = 'rail-marker bad';
+  }
+}
+
+Object.keys(RAILS).forEach(k=>{
+  $('in-'+k).addEventListener('input', ()=>{ updateRail(k); });
+});
+
+$('btnSimFuente').addEventListener('click', ()=>{
+  // 70% de probabilidad de fuente sana
+  const healthy = Math.random() < 0.70;
+  let v12, v5, v33;
+
+  if(healthy){
+    v12 = 12.00 + (Math.random()*0.9 - 0.45);
+    v5  = 5.00  + (Math.random()*0.36 - 0.18);
+    v33 = 3.30  + (Math.random()*0.24 - 0.12);
+  } else {
+    // generar al menos un riel fuera de tolerancia
+    v12 = 12.00 + (Math.random()*2.6 - 1.3);
+    v5  = 5.00  + (Math.random()*0.9 - 0.45);
+    v33 = 3.30  + (Math.random()*0.7 - 0.35);
+    const pick = Math.floor(Math.random()*3);
+    if(pick===0) v12 = Math.random()<0.5 ? 11.10 : 13.05;
+    if(pick===1) v5  = Math.random()<0.5 ? 4.55  : 5.55;
+    if(pick===2) v33 = Math.random()<0.5 ? 2.95  : 3.62;
+  }
+
+  $('in-12').value = v12.toFixed(2);
+  $('in-5').value  = v5.toFixed(2);
+  $('in-33').value = v33.toFixed(2);
+
+  updateRail('12'); updateRail('5'); updateRail('33');
+  toast('⚡ Lectura del multímetro capturada en los tres rieles.','');
+});
+
+$('btnEvalATX').addEventListener('click', ()=>{
+  const v12 = STATE.atx.v12, v5 = STATE.atx.v5, v33 = STATE.atx.v33;
+
+  if(v12===null || v5===null || v33===null){
+    setVerdict($('atxVerdict'),'warn','⚠ Datos incompletos',
+      'Debe registrar la lectura de los tres rieles (+12V, +5V, +3.3V) antes de evaluar la tolerancia.');
+    return;
+  }
+
+  const fallos = [];
+  if(v12 < RAILS['12'].min || v12 > RAILS['12'].max) fallos.push('+12V (' + v12.toFixed(2) + 'V)');
+  if(v5  < RAILS['5'].min  || v5  > RAILS['5'].max ) fallos.push('+5V ('  + v5.toFixed(2)  + 'V)');
+  if(v33 < RAILS['33'].min || v33 > RAILS['33'].max) fallos.push('+3.3V ('+ v33.toFixed(2) + 'V)');
+
+  STATE.atx.evaluated = true;
+
+  if(fallos.length === 0){
+    STATE.atx.verdict = 'ok';
+    setVerdict($('atxVerdict'),'ok','✔ Fuente ATX OPERATIVA',
+      'Los tres rieles se encuentran dentro de la matriz de tolerancia ±5%.<br><br>' +
+      '<span style="font-family:var(--mono);font-size:12px;">' +
+      '+12V: ' + v12.toFixed(2) + ' V (11.40 – 12.60)<br>' +
+      '+5V: '  + v5.toFixed(2)  + ' V (4.75 – 5.25)<br>' +
+      '+3.3V: '+ v33.toFixed(2) + ' V (3.14 – 3.47)</span><br><br>' +
+      'Veredicto: <strong>NO REEMPLAZAR</strong> — la fuente alimenta correctamente CPU, GPU, lógica digital y RAM.');
+    toast('✔ Fuente ATX dentro de tolerancia ±5%.','ok');
+  } else {
+    STATE.atx.verdict = 'bad';
+    setVerdict($('atxVerdict'),'bad','✖ FALLA ELÉCTRICA — REEMPLAZO REQUERIDO',
+      'Riel(es) fuera de la matriz de tolerancia ±5%:<br><br>' +
+      '<span style="font-family:var(--mono);font-size:12px;color:#ffb3b3;">' +
+      fallos.map(f=>'• ' + f).join('<br>') + '</span><br><br>' +
+      'Veredicto: <strong>REEMPLAZAR LA FUENTE ATX</strong>. Una tensión fuera de rango provoca inestabilidad, BSOD aleatorios y puede dañar de forma permanente la placa base y los componentes conectados.');
+    toast('✖ Falla detectada en la fuente ATX.','err');
+  }
+  updateProgress();
+});
+
+/* ============================================================
+   MÓDULO 1 — PASO 3: EZ DEBUG LEDs
+   ============================================================ */
+const SEQ_CORRECT = ['CPU','DRAM','VGA','BOOT'];
+
+function renderSeq(){
+  const track = $('seqTrack');
+  if(STATE.ez.sequence.length === 0){
+    track.innerHTML = '<span style="color:#4d6183;">SECUENCIA REGISTRADA:</span><span>—</span>';
+    return;
+  }
+  track.innerHTML = '<span style="color:#4d6183;">SECUENCIA REGISTRADA:</span>' +
+    STATE.ez.sequence.map(s=>'<span class="seq-pill">'+s+'</span>').join('<span style="color:#4d6183;">→</span>');
+}
+
+qsa('.led').forEach(led=>{
+  led.addEventListener('click', ()=>{
+    if(STATE.ez.orderDone) return;
+    const name = led.dataset.led;
+
+    // ya elegido?
+    if(STATE.ez.sequence.includes(name)){
+      toast('⚠ El LED ' + name + ' ya fue registrado en la secuencia.','warn');
+      return;
+    }
+
+    const expected = SEQ_CORRECT[STATE.ez.sequence.length];
+
+    if(name !== expected){
+      // error -> reset
+      STATE.ez.sequence = [];
+      qsa('.led').forEach(l=>l.classList.remove('on'));
+      renderSeq();
+      setVerdict($('seqVerdict'),'bad','✖ Secuencia incorrecta',
+        'El orden de inicialización física del POST es <strong>CPU → DRAM → VGA → BOOT</strong>. ' +
+        'Se reinició el registro. Volvé a intentarlo desde el primer LED.');
+      toast('✖ Orden incorrecto. Secuencia reiniciada.','err');
+      return;
+    }
+
+    // correcto
+    STATE.ez.sequence.push(name);
+    led.classList.add('on');
+    renderSeq();
+
+    if(STATE.ez.sequence.length === 4){
+      STATE.ez.orderDone = true;
+      setVerdict($('seqVerdict'),'ok','✔ Secuencia de inicialización registrada correctamente',
+        '<strong>CPU → DRAM → VGA → BOOT</strong>. Estos indicadores físicos son la primera línea de diagnóstico absoluto si el sistema no logra inicializar el video durante el POST (Power-On Self-Test).');
+      toast('✔ Secuencia EZ Debug LED correcta.','ok');
+      lanzarCasoEZ();
+      updateProgress();
+    }
+  });
+});
+
+/* --- Caso clínico EZ Debug --- */
+const EZ_CASOS = [
+  {
+    led: 'CPU',
+    texto: 'El equipo enciende, los ventiladores giran y la iluminación RGB funciona, pero no hay señal de video. El LED <strong>CPU</strong> permanece encendido de forma fija. No se escuchan pitidos del speaker interno.',
+    correcta: 'cpu',
+    opciones: [
+      { k:'a', t:'Módulo de memoria RAM mal asentado o defectuoso.', v:'ram' },
+      { k:'b', t:'Fallo en el procesador, zócalo (socket) o etapa de alimentación VRM del CPU.', v:'cpu' },
+      { k:'c', t:'Tarjeta gráfica no detectada o cable de video desconectado.', v:'vga' },
+      { k:'d', t:'Unidad de arranque no detectada por el firmware.', v:'boot' }
+    ]
+  },
+  {
+    led: 'DRAM',
+    texto: 'El sistema enciende y se mantiene encendido, pero no hay video. El LED <strong>DRAM</strong> queda fijo. El equipo fue trasladado recientemente y se movió bastante.',
+    correcta: 'ram',
+    opciones: [
+      { k:'a', t:'Módulo de memoria RAM mal asentado en la ranura o módulo defectuoso.', v:'ram' },
+      { k:'b', t:'Procesador incompatible con el chipset de la placa base.', v:'cpu' },
+      { k:'c', t:'Fuente de alimentación con el riel +5V fuera de tolerancia.', v:'psu' },
+      { k:'d', t:'Disco rígido con sectores defectuosos.', v:'hdd' }
+    ]
+  },
+  {
+    led: 'VGA',
+    texto: 'El equipo pasa el chequeo de CPU y memoria, pero se detiene y el LED <strong>VGA</strong> permanece encendido. El monitor indica "Sin señal".',
+    correcta: 'vga',
+    opciones: [
+      { k:'a', t:'Memoria RAM con errores en direcciones bajas.', v:'ram' },
+      { k:'b', t:'Tarjeta gráfica mal asentada, sin alimentación PCIe o cable de video defectuoso.', v:'vga' },
+      { k:'c', t:'Secure Boot deshabilitado en la UEFI.', v:'sec' },
+      { k:'d', t:'Módulo TPM 2.0 ausente.', v:'tpm' }
+    ]
+  },
+  {
+    led: 'BOOT',
+    texto: 'El equipo completa el POST, muestra el logo del fabricante y luego indica "Reboot and Select proper Boot device". El LED <strong>BOOT</strong> permanece encendido.',
+    correcta: 'boot',
+    opciones: [
+      { k:'a', t:'Microprocesador sobrecalentado.', v:'cpu' },
+      { k:'b', t:'Unidad de almacenamiento no detectada, desconectada o sin sistema operativo booteable.', v:'boot' },
+      { k:'c', t:'Memoria RAM insuficiente para el sistema operativo.', v:'ram' },
+      { k:'d', t:'Ventilador del CPU detenido.', v:'fan' }
+    ]
+  }
+];
+
+function lanzarCasoEZ(){
+  const caso = EZ_CASOS[Math.floor(Math.random()*EZ_CASOS.length)];
+  STATE.ez.caseId = caso;
+
+  $('casoEZ').style.display = 'block';
+  $('casoEZTexto').innerHTML = caso.texto;
+
+  const cont = $('casoEZOpts');
+  cont.innerHTML = '';
+  caso.opciones.forEach(op=>{
+    const div = document.createElement('div');
+    div.className = 'opt';
+    div.innerHTML = '<div class="okey">' + op.k.toUpperCase() + '</div><div>' + op.t + '</div>';
+    div.addEventListener('click', ()=>{
+      if(STATE.ez.caseDone) return;
+      qsa('.opt', cont).forEach(o=>o.classList.remove('sel'));
+      div.classList.add('sel');
+      STATE.ez.caseAnswer = op.v;
+
+      if(op.v === caso.correcta){
+        div.classList.add('ok');
+        STATE.ez.caseDone = true;
+        setVerdict($('casoEZVerdict'),'ok','✔ Diagnóstico correcto',
+          'El LED <strong>' + caso.led + '</strong> señala exactamente el componente que detuvo el arranque. ' +
+          'Un LED encendido permanentemente es diagnóstico absoluto del punto de falla durante el POST.');
+        toast('✔ Caso clínico resuelto correctamente.','ok');
+        updateProgress();
+      } else {
+        div.classList.add('no');
+        setVerdict($('casoEZVerdict'),'bad','✖ Diagnóstico incorrecto',
+          'Revisá la secuencia <strong>CPU → DRAM → VGA → BOOT</strong>: el LED que queda fijo corresponde al componente que detuvo la inicialización. Intentalo nuevamente.');
+        toast('✖ Diagnóstico incorrecto. Reintentá.','err');
+      }
+    });
+    cont.appendChild(div);
+  });
+}
+
+/* ============================================================
+   MÓDULO 2 — UEFI
+   ============================================================ */
+/* Reloj UEFI */
+function tickClock(){
+  const d = new Date();
+  const hh = String(d.getHours()).padStart(2,'0');
+  const mm = String(d.getMinutes()).padStart(2,'0');
+  $('uefiClock').textContent = hh + ':' + mm;
+}
+tickClock(); setInterval(tickClock, 20000);
+
+/* --- Sliders monitor --- */
+const SLIDER_DEFS = {
+  slCpuT:  { key:'cpuT',  out:'valCpuT',  fmt:v=>v+' °C',  safe:[20,80],  badHighOnly:false },
+  slSysT:  { key:'sysT',  out:'valSysT',  fmt:v=>v+' °C',  safe:[20,50],  badHighOnly:false },
+  slVcore: { key:'vcore', out:'valVcore', fmt:v=>v.toFixed(2)+' V', safe:[1.10,1.40], badHighOnly:false },
+  slDram:  { key:'dram',  out:'valDram',  fmt:v=>v.toFixed(2)+' V', safe:[1.30,1.45], badHighOnly:false }
+};
+
+function updateSlider(id){
+  const def = SLIDER_DEFS[id];
+  const el = $(id);
+  const val = parseFloat(el.value);
+  STATE.uefi[def.key] = val;
+
+  const out = $(def.out);
+  const inRange = val >= def.safe[0] && val <= def.safe[1];
+  out.textContent = def.fmt(val) + (inRange ? ' ✔' : ' ✖');
+  out.className = 'val ' + (inRange ? 'ok' : 'bad');
+}
+
+Object.keys(SLIDER_DEFS).forEach(id=>{
+  $(id).addEventListener('input', ()=>updateSlider(id));
+  updateSlider(id);
+});
+
+/* --- Boot priority --- */
+function renderBoot(){
+  const cont = $('bootList');
+  cont.innerHTML = '';
+  STATE.uefi.boot.forEach((name, i)=>{
+    const div = document.createElement('div');
+    div.className = 'boot-item' + (i===0 ? ' first' : '');
+    div.innerHTML =
+      '<div class="boot-num">' + (i+1) + '</div>' +
+      '<div class="boot-name">' + name + '</div>' +
+      '<div class="boot-btns">' +
+        '<button class="mini-btn" data-dir="up" data-i="'+i+'" '+(i===0?'disabled':'')+'>▲</button>' +
+        '<button class="mini-btn" data-dir="down" data-i="'+i+'" '+(i===STATE.uefi.boot.length-1?'disabled':'')+'>▼</button>' +
+      '</div>';
+    cont.appendChild(div);
+  });
+
+  qsa('.mini-btn', cont).forEach(b=>{
+    b.addEventListener('click', ()=>{
+      const i = parseInt(b.dataset.i,10);
+      const dir = b.dataset.dir;
+      if(dir==='up' && i>0){
+        [STATE.uefi.boot[i-1], STATE.uefi.boot[i]] = [STATE.uefi.boot[i], STATE.uefi.boot[i-1]];
+      } else if(dir==='down' && i < STATE.uefi.boot.length-1){
+        [STATE.uefi.boot[i+1], STATE.uefi.boot[i]] = [STATE.uefi.boot[i], STATE.uefi.boot[i+1]];
+      }
+      renderBoot();
+    });
+  });
+}
+renderBoot();
+
+/* --- Switches --- */
+$('swSecure').addEventListener('click', ()=>{
+  STATE.uefi.secureBoot = !STATE.uefi.secureBoot;
+  $('swSecure').classList.toggle('on', STATE.uefi.secureBoot);
+  $('swSecureRow').classList.toggle('on', STATE.uefi.secureBoot);
+});
+$('swTpm').addEventListener('click', ()=>{
+  STATE.uefi.tpm = !STATE.uefi.tpm;
+  $('swTpm').classList.toggle('on', STATE.uefi.tpm);
+  $('swTpmRow').classList.toggle('on', STATE.uefi.tpm);
+});
+
+/* --- F10 Guardar --- */
+$('btnF10').addEventListener('click', ()=>{
+  const errores = [];
+
+  // 1) Monitor
+  const monErrores = [];
+  if(STATE.uefi.cpuT < 20 || STATE.uefi.cpuT > 80) monErrores.push('CPU Temperature (' + STATE.uefi.cpuT + ' °C) fuera de rango seguro (20–80 °C)');
+  if(STATE.uefi.sysT < 20 || STATE.uefi.sysT > 50) monErrores.push('System Temperature (' + STATE.uefi.sysT + ' °C) fuera de rango seguro (20–50 °C)');
+  if(STATE.uefi.vcore < 1.10 || STATE.uefi.vcore > 1.40) monErrores.push('CPU Vcore (' + STATE.uefi.vcore.toFixed(2) + ' V) fuera de rango seguro (1.10–1.40 V)');
+  if(STATE.uefi.dram < 1.30 || STATE.uefi.dram > 1.45) monErrores.push('DRAM Voltage (' + STATE.uefi.dram.toFixed(2) + ' V) fuera de rango seguro (1.30–1.45 V)');
+
+  // 2) Boot
+  const bootOk = STATE.uefi.boot[0].indexOf('USB') === 0;
+  if(!bootOk) errores.push('La unidad <strong>USB: MemTest86+</strong> no está en la posición 1 de Boot Priority.');
+
+  // 3) Seguridad
+  if(!STATE.uefi.secureBoot) errores.push('<strong>Secure Boot</strong> debe estar en [Enabled].');
+  if(!STATE.uefi.tpm) errores.push('<strong>TPM 2.0 / fTPM</strong> debe estar activado.');
+
+  if(monErrores.length){
+    setVerdict($('uefiVerdict'),'warn','⚠ Telemetría fuera de rango',
+      'Corregí los siguientes valores del Hardware Monitor antes de guardar:<br><br>' +
+      '<span style="font-family:var(--mono);font-size:12px;">' + monErrores.map(e=>'• '+e).join('<br>') + '</span>');
+    toast('⚠ Ajustá los valores del Hardware Monitor.','warn');
+    return;
+  }
+
+  if(errores.length){
+    setVerdict($('uefiVerdict'),'bad','✖ Configuración incompleta — no se puede guardar',
+      'Los siguientes requisitos no se cumplen:<br><br>' +
+      '<span style="font-family:var(--mono);font-size:12px;">' + errores.map(e=>'• '+e).join('<br>') + '</span>');
+    toast('✖ Auditoría UEFI con pendientes.','err');
+    return;
+  }
+
+  // Todo OK
+  STATE.uefi.saved = true;
+  setVerdict($('uefiVerdict'),'ok','✔ F10 — Configuración guardada y aplicada',
+    '<strong>Auditoría UEFI superada.</strong><br><br>' +
+    '<span style="font-family:var(--mono);font-size:12px;">' +
+    '• Hardware Monitor: CPU ' + STATE.uefi.cpuT + ' °C · Sistema ' + STATE.uefi.sysT + ' °C · Vcore ' + STATE.uefi.vcore.toFixed(2) + ' V · DRAM ' + STATE.uefi.dram.toFixed(2) + ' V<br>' +
+    '• Boot Priority: ' + STATE.uefi.boot[0] + '<br>' +
+    '• Secure Boot: [Enabled]<br>' +
+    '• TPM 2.0 / fTPM: [Activated]</span><br><br>' +
+    'El sistema es compatible con <strong>Windows 11</strong> y se encuentra listo para el arranque del entorno Live USB de diagnóstico.');
+  toast('✔ F10 — Configuración UEFI guardada.','ok');
+  updateProgress();
+});
+
+$('btnResetUEFI').addEventListener('click', ()=>{
+  STATE.uefi.boot = ['SSD: Windows 11','HDD: Datos','CD/DVD: Unidad óptica','USB: MemTest86+ (Diagnóstico)'];
+  STATE.uefi.secureBoot = false;
+  STATE.uefi.tpm = false;
+  STATE.uefi.saved = false;
+  STATE.uefi.cpuT = 45; STATE.uefi.sysT = 38; STATE.uefi.vcore = 1.25; STATE.uefi.dram = 1.35;
+
+  $('slCpuT').value = 45; $('slSysT').value = 38; $('slVcore').value = 1.25; $('slDram').value = 1.35;
+  Object.keys(SLIDER_DEFS).forEach(updateSlider);
+
+  $('swSecure').classList.remove('on'); $('swSecureRow').classList.remove('on');
+  $('swTpm').classList.remove('on'); $('swTpmRow').classList.remove('on');
+
+  renderBoot();
+  $('uefiVerdict').className = 'verdict';
+  updateProgress();
+  toast('↺ Configuración UEFI restablecida.','');
+});
+
+/* ============================================================
+   MÓDULO 3 — MEMTEST86+
+   ============================================================ */
+const MEM_SCENARIOS = [
+  {
+    id:'pass',
+    log:
+'<span class="t-blue">MemTest86+ v6.10  |  Pass 1/1  |  4 Fases</span>\n' +
+'<span class="t-dim">CPU: Intel Core i9-12900K @ 3.20GHz</span>\n' +
+'<span class="t-dim">Memoria: 32768 MB DDR4-3200 (XMP Disabled)</span>\n\n' +
+'Fase 0 — Test propio de direcciones ............ <span class="t-dim">OK</span>\n' +
+'Fase 1 — Test de patrones móviles inversos ..... <span class="t-dim">OK</span>\n' +
+'Fase 2 — Test de bits aleatorios ............... <span class="t-dim">OK</span>\n' +
+'Fase 3 — Test de bloques de 64 bits ............ <span class="t-dim">OK</span>\n\n' +
+'<span class="t-blue">WallTime: 00:14:32   |   Pass: 100%</span>\n' +
+'<span class="t-blue">Errores encontrados: 0</span>\n' +
+'<span class="t-blue">RESULTADO: PASS ✔</span>',
+    correct:'ram-ok'
+  },
+  {
+    id:'lowaddr',
+    log:
+'<span class="t-blue">MemTest86+ v6.10  |  Pass 1/1  |  4 Fases</span>\n' +
+'<span class="t-dim">CPU: Intel Core i9-12900K @ 3.20GHz</span>\n' +
+'<span class="t-dim">Memoria: 32768 MB DDR4-3200 (XMP Disabled)</span>\n\n' +
+'Fase 0 — Test propio de direcciones ............ <span class="t-red">ERROR</span>\n' +
+'Fase 1 — Test de patrones móviles inversos ..... <span class="t-red">ERROR</span>\n' +
+'Fase 2 — Test de bits aleatorios ............... <span class="t-dim">OK</span>\n' +
+'Fase 3 — Test de bloques de 64 bits ............ <span class="t-red">ERROR</span>\n\n' +
+'<span class="t-red">0x0000000000010A40   esperado: 0x5A5A5A5A   obtenido: 0x5A5A5A5B</span>\n' +
+'<span class="t-red">0x0000000000010A48   esperado: 0xA5A5A5A5   obtenido: 0xA5A5A5A4</span>\n' +
+'<span class="t-red">0x0000000000010B10   esperado: 0xFFFFFFFF   obtenido: 0xFFFFFFFE</span>\n\n' +
+'<span class="t-red">Errores encontrados: 3 — RESULTADO: FAIL ✖</span>\n' +
+'<span class="t-amber">NOTA: errores concentrados en direcciones BAJAS de memoria.</span>',
+    correct:'cpu-mc'
+  },
+  {
+    id:'channel',
+    log:
+'<span class="t-blue">MemTest86+ v6.10  |  Pass 1/1  |  4 Fases</span>\n' +
+'<span class="t-dim">CPU: Intel Core i9-12900K @ 3.20GHz</span>\n' +
+'<span class="t-dim">Memoria: 32768 MB DDR4-3200 (XMP Disabled)</span>\n\n' +
+'Fase 0 — Test propio de direcciones ............ <span class="t-red">ERROR</span>\n' +
+'Fase 1 — Test de patrones móviles inversos ..... <span class="t-red">ERROR</span>\n' +
+'Fase 2 — Test de bits aleatorios ............... <span class="t-red">ERROR</span>\n' +
+'Fase 3 — Test de bloques de 64 bits ............ <span class="t-red">ERROR</span>\n\n' +
+'<span class="t-red">0x000000004A201000   esperado: 0x12345678   obtenido: 0x12345679</span>\n' +
+'<span class="t-red">0x000000004A2F8C40   esperado: 0xDEADBEEF   obtenido: 0xDEADBEEE</span>\n' +
+'<span class="t-red">0x000000004A3A1100   esperado: 0x0F0F0F0F   obtenido: 0x0F0F0F0E</span>\n\n' +
+'<span class="t-red">Errores encontrados: 12 — RESULTADO: FAIL ✖</span>\n' +
+'<span class="t-amber">NOTA: errores CONCENTRADOS en un mismo canal / rango de direcciones (DIMM B).</span>',
+    correct:'dimm'
+  }
+];
+
+$('btnMemTest').addEventListener('click', ()=>{
+  const term = $('memTerm');
+  const sc = MEM_SCENARIOS[Math.floor(Math.random()*MEM_SCENARIOS.length)];
+  STATE.mem.scenario = sc;
+  STATE.mem.executed = true;
+  STATE.mem.answer = null;
+  STATE.mem.correct = false;
+
+  term.innerHTML = '<span class="t-dim">Inicializando entorno Live USB...</span>\n' +
+                   '<span class="t-dim">Asignando bloques de memoria...</span>\n\n';
+  $('memDiagBox').style.display = 'none';
+  $('memVerdict').className = 'verdict';
+  $('memDiagSelect').value = '';
+  updateProgress();
+
+  let i = 0;
+  const full = sc.log;
+  const interval = setInterval(()=>{
+    i += 6 + Math.floor(Math.random()*8);
+    term.innerHTML = full.substring(0, i);
+    term.scrollTop = term.scrollHeight;
+    if(i >= full.length){
+      clearInterval(interval);
+      term.innerHTML = full;
+      term.scrollTop = term.scrollHeight;
+      $('memDiagBox').style.display = 'block';
+      toast('▶ Test completado. Interpretá el resultado.', '');
+    }
+  }, 26);
+});
+
+$('btnMemReset').addEventListener('click', ()=>{
+  $('memTerm').innerHTML = '<span class="t-dim">MemTest86+ v6.10 — Esperando inicio de pruebas...</span>';
+  $('memDiagBox').style.display = 'none';
+  $('memVerdict').className = 'verdict';
+  $('memDiagSelect').value = '';
+  STATE.mem.executed = false;
+  STATE.mem.correct = false;
+  STATE.mem.scenario = null;
+  updateProgress();
+});
+
+$('btnMemValidar').addEventListener('click', ()=>{
+  if(!STATE.mem.executed){ toast('⚠ Primero ejecutá el test de memoria.','warn'); return; }
+  const val = $('memDiagSelect').value;
+  if(!val){ toast('⚠ Seleccioná una conclusión técnica.','warn'); return; }
+
+  STATE.mem.answer = val;
+
+  if(val === STATE.mem.scenario.correct){
+    STATE.mem.correct = true;
+    let extra = '';
+    if(val === 'ram-ok') extra = 'La memoria RAM se encuentra operativa y funcionando dentro de las especificaciones térmicas y de latencia del fabricante. No se requiere intervención.';
+    if(val === 'cpu-mc') extra = 'Errores en direcciones bajas sugieren un problema estructural en el <strong>controlador de memoria integrado en el CPU (IMC)</strong>. Se recomienda probar el procesador en otra placa base y verificar el zócalo.';
+    if(val === 'dimm') extra = 'Errores concentrados en un canal específico indican un <strong>módulo RAM defectuoso o daño físico en la ranura DIMM</strong> de la placa base. Probar módulo por módulo y cambiar de ranura.';
+    setVerdict($('memVerdict'),'ok','✔ Diagnóstico forense correcto', extra);
+    toast('✔ Interpretación correcta de MemTest86+.','ok');
+    updateProgress();
+  } else {
+    setVerdict($('memVerdict'),'bad','✖ Diagnóstico incorrecto',
+      'Revisá el patrón de errores: las direcciones reportadas indican si el fallo está en el controlador de memoria del CPU (direcciones bajas) o en un módulo/ranura DIMM específica (canal concentrado). Un test con 0 errores es un PASS.');
+    toast('✖ Interpretación incorrecta.','err');
+  }
+});
+
+/* ============================================================
+   MÓDULO 3 — S.M.A.R.T.
+   ============================================================ */
+$('btnSmartCaso').addEventListener('click', ()=>{
+  const r = Math.random();
+  let v05=0, vC5=0, vC6=0, t=35;
+
+  if(r < 0.4){
+    // sano
+    v05 = 0; vC5 = 0; vC6 = 0; t = 30 + Math.floor(Math.random()*15);
+  } else if(r < 0.7){
+    // alerta temprana
+    v05 = 0; vC5 = Math.floor(Math.random()*8)+1; vC6 = 0; t = 45 + Math.floor(Math.random()*14);
+  } else {
+    // crítico
+    v05 = Math.floor(Math.random()*140)+1;
+    vC5 = Math.floor(Math.random()*20);
+    vC6 = Math.floor(Math.random()*6);
+    t = 40 + Math.floor(Math.random()*25);
+  }
+
+  $('smart05').value = v05;
+  $('smartC5').value = vC5;
+  $('smartC6').value = vC6;
+  $('smartTemp').value = t;
+
+  $('smartVerdict').className = 'verdict';
+  STATE.smart.evaluated = false;
+  toast('🎲 Caso clínico S.M.A.R.T. generado. Aplicá la Regla de Oro.','');
+});
+
+$('btnSmartEval').addEventListener('click', ()=>{
+  const id05 = parseInt($('smart05').value,10) || 0;
+  const c5   = parseInt($('smartC5').value,10) || 0;
+  const c6   = parseInt($('smartC6').value,10) || 0;
+  const temp = parseInt($('smartTemp').value,10) || 0;
+
+  STATE.smart.id05 = id05;
+  STATE.smart.c5 = c5;
+  STATE.smart.c6 = c6;
+  STATE.smart.temp = temp;
+  STATE.smart.evaluated = true;
+
+  const criticos = [];
+  if(id05 > 0) criticos.push('ID 05 — Reallocated Sectors Count: ' + id05);
+  if(c5 > 0)   criticos.push('ID C5 — Current Pending Sector: ' + c5);
+  if(c6 > 0)   criticos.push('ID C6 — Uncorrectable Sector Count: ' + c6);
+
+  if(criticos.length > 0){
+    STATE.smart.verdict = 'critical';
+    setVerdict($('smartVerdict'),'bad','🔴 ESTADO CRÍTICO — REEMPLAZO INMEDIATO',
+      '<strong>Regla de Oro S.M.A.R.T. activada:</strong> atributo(s) clasificado(s) como «Pre-falla» con valor bruto distinto de cero.<br><br>' +
+      '<span style="font-family:var(--mono);font-size:12px;color:#ffb3b3;">' + criticos.map(c=>'• '+c).join('<br>') + '</span><br><br>' +
+      '<strong>ACCIÓN REQUERIDA:</strong> proceder al reemplazo inmediato del disco rígido o unidad de estado sólido para evitar la pérdida catastrófica de datos, <em>independientemente de si el sistema operativo principal aún logra arrancar</em>.<br><br>' +
+      'Temperatura registrada: ' + temp + ' °C.');
+    toast('🔴 Unidad en estado crítico — reemplazo inmediato.','err');
+  } else if(temp > 70){
+    STATE.smart.verdict = 'warning';
+    setVerdict($('smartVerdict'),'warn','🟠 ALERTA TÉRMICA CRÍTICA — Monitoreo riguroso',
+      'No hay sectores reasignados ni pendientes (ID 05, C5, C6 en cero), pero la temperatura de <strong>' + temp + ' °C</strong> supera el umbral de 70 °C para unidades SSD.<br><br>' +
+      'Verificar ventilación del gabinete, disipadores M.2 y flujo de aire. El <em>throttling</em> térmico agresivo degrada el rendimiento y acelera el desgaste de las celdas NAND.');
+    toast('🟠 Alerta térmica en la unidad de almacenamiento.','warn');
+  } else if(temp > 50){
+    STATE.smart.verdict = 'warning';
+    setVerdict($('smartVerdict'),'warn','🟡 ALERTA TEMPRANA — Monitoreo riguroso requerido',
+      'No se detectan sectores defectuosos (ID 05, C5, C6 = 0), pero la temperatura de <strong>' + temp + ' °C</strong> supera los 50 °C sostenidos, umbral de alerta térmica para discos mecánicos HDD.<br><br>' +
+      'Mejorar la refrigeración del gabinete y volver a auditar la unidad en el próximo ciclo de mantenimiento.');
+    toast('🟡 Alerta térmica temprana.','warn');
+  } else {
+    STATE.smart.verdict = 'ok';
+    setVerdict($('smartVerdict'),'ok','🟢 UNIDAD OPERATIVA — Desgaste normal',
+      'Ningún atributo de pre-falla presenta valores distintos de cero:<br><br>' +
+      '<span style="font-family:var(--mono);font-size:12px;">' +
+      '• ID 05 Reallocated Sectors Count: 0<br>' +
+      '• ID C5 Current Pending Sector: 0<br>' +
+      '• ID C6 Uncorrectable Sector Count: 0<br>' +
+      '• ID C2 Temperature: ' + temp + ' °C (dentro de rango)</span><br><br>' +
+      'La estructura lógica del almacenamiento se encuentra estable. Continuar con el monitoreo periódico habitual.');
+    toast('🟢 Unidad de almacenamiento saludable.','ok');
+  }
+
+  updateProgress();
+});
+
+/* ============================================================
+   RESUMEN Y PUNTAJE
+   ============================================================ */
+function actualizarResumen(){
+  const grid = $('summaryGrid');
+  if(!grid) return;
+
+  const items = [
+    {
+      t:'Nivel 0 · Protocolo ESD',
+      v: STATE.esd.done ? 'COMPLETADO' : 'PENDIENTE',
+      c: STATE.esd.done ? 'ok' : 'pend'
+    },
+    {
+      t:'Nivel 0 · Matriz ATX ±5%',
+      v: STATE.atx.evaluated ? (STATE.atx.verdict==='ok' ? 'OPERATIVA' : 'FALLA / REEMPLAZO') : 'PENDIENTE',
+      c: STATE.atx.evaluated ? (STATE.atx.verdict==='ok' ? 'ok' : 'bad') : 'pend'
+    },
+    {
+      t:'Nivel 0 · EZ Debug LEDs',
+      v: (STATE.ez.orderDone && STATE.ez.caseDone) ? 'RESUELTO' : (STATE.ez.orderDone ? 'PARCIAL' : 'PENDIENTE'),
+      c: (STATE.ez.orderDone && STATE.ez.caseDone) ? 'ok' : 'pend'
+    },
+    {
+      t:'Nivel 1 · Auditoría UEFI',
+      v: STATE.uefi.saved ? 'GUARDADO (F10)' : 'PENDIENTE',
+      c: STATE.uefi.saved ? 'ok' : 'pend'
+    },
+    {
+      t:'Nivel 2 · MemTest86+',
+      v: STATE.mem.correct ? 'DIAGNÓSTICO CORRECTO' : 'PENDIENTE',
+      c: STATE.mem.correct ? 'ok' : 'pend'
+    },
+    {
+      t:'Nivel 2 · Triage S.M.A.R.T.',
+      v: STATE.smart.evaluated
+          ? (STATE.smart.verdict==='critical' ? 'CRÍTICO — REEMPLAZAR'
+             : STATE.smart.verdict==='warning' ? 'ALERTA TEMPRANA'
+             : 'OPERATIVA')
+          : 'PENDIENTE',
+      c: STATE.smart.evaluated
+          ? (STATE.smart.verdict==='critical' ? 'bad'
+             : STATE.smart.verdict==='warning' ? 'pend' : 'ok')
+          : 'pend'
+    }
+  ];
+
+  grid.innerHTML = items.map(it =>
+    '<div class="sum-card"><div class="st">'+it.t+'</div><div class="sv '+it.c+'">'+it.v+'</div></div>'
+  ).join('');
+}
+
+function calcularScore(){
+  let s = 0;
+  // Nivel 0 — 30 pts
+  if(STATE.esd.done) s += 10;
+  if(STATE.atx.evaluated && STATE.atx.verdict === 'ok') s += 10;
+  else if(STATE.atx.evaluated) s += 4;
+  if(STATE.ez.orderDone) s += 5;
+  if(STATE.ez.caseDone) s += 5;
+  // Nivel 1 — 35 pts
+  if(STATE.uefi.saved) s += 35;
+  // Nivel 2 — 35 pts
+  if(STATE.mem.correct) s += 15;
+  if(STATE.smart.evaluated) s += 20;
+  return Math.min(100, s);
+}
+
+function actualizarScore(){
+  const s = calcularScore();
+  $('scoreNum').innerHTML = s + '<small>/100</small>';
+}
+
+/* ============================================================
+   GENERACIÓN DE INFORME .DOC
+   ============================================================ */
+$('btnGenerarDoc').addEventListener('click', ()=>{
+  const nombre = $('alumnoNombre').value.trim();
+  const curso  = $('alumnoCurso').value.trim();
+  const inst   = $('alumnoInst').value.trim();
+
+  if(!nombre || !curso){
+    setVerdict($('docVerdict'),'bad','✖ Datos incompletos',
+      'Debe completar <strong>Nombre y Apellido</strong> y <strong>Curso / División</strong> antes de generar el informe técnico descargable.');
+    toast('✖ Completá nombre y curso.','err');
+    return;
+  }
+
+  const score = calcularScore();
+  const fecha = new Date().toLocaleString('es-AR', { dateStyle:'long', timeStyle:'short' });
+
+  const estadoTxt = (ok)=> ok ? '✔ CONFORME' : '✖ NO CONFORME';
+  const pendTxt   = (ok)=> ok ? '✔ COMPLETADO' : '⚠ PENDIENTE';
+
+  const atxDetalle = STATE.atx.evaluated
+    ? 'Veredicto: ' + (STATE.atx.verdict==='ok' ? 'FUENTE OPERATIVA (dentro de ±5%)' : 'FALLA ELÉCTRICA — REEMPLAZO REQUERIDO') +
+      '<br>+12V: ' + (STATE.atx.v12!==null ? STATE.atx.v12.toFixed(2)+' V' : 'sin dato') +
+      ' &nbsp;|&nbsp; +5V: ' + (STATE.atx.v5!==null ? STATE.atx.v5.toFixed(2)+' V' : 'sin dato') +
+      ' &nbsp;|&nbsp; +3.3V: ' + (STATE.atx.v33!==null ? STATE.atx.v33.toFixed(2)+' V' : 'sin dato')
+    : 'Sin evaluación registrada.';
+
+  const ezDetalle = STATE.ez.orderDone
+    ? 'Secuencia registrada: ' + STATE.ez.sequence.join(' → ') +
+      (STATE.ez.caseDone ? '<br>Caso clínico resuelto: LED ' + (STATE.ez.caseId ? STATE.ez.caseId.led : '—') + ' — diagnóstico correcto.' : '<br>Caso clínico: pendiente.')
+    : 'Sin registro de secuencia.';
+
+  const uefiDetalle = STATE.uefi.saved
+    ? 'Estado: CONFIGURACIÓN GUARDADA (F10)<br>' +
+      'CPU Temp: ' + STATE.uefi.cpuT + ' °C &nbsp;|&nbsp; System Temp: ' + STATE.uefi.sysT + ' °C<br>' +
+      'CPU Vcore: ' + STATE.uefi.vcore.toFixed(2) + ' V &nbsp;|&nbsp; DRAM Voltage: ' + STATE.uefi.dram.toFixed(2) + ' V<br>' +
+      'Boot Priority 1: ' + STATE.uefi.boot[0] + '<br>' +
+      'Secure Boot: [Enabled] &nbsp;|&nbsp; TPM 2.0 / fTPM: [Activated]'
+    : 'Configuración no guardada.';
+
+  const memDetalle = STATE.mem.correct
+    ? 'Resultado del test: ' + (STATE.mem.scenario.id==='pass' ? 'PASS — 0 errores (1 pasada / 4 fases)' : 'FAIL — errores detectados') +
+      '<br>Conclusión técnica: ' + $('memDiagSelect').options[$('memDiagSelect').selectedIndex].text
+    : 'Test no completado o diagnóstico no validado.';
+
+  const smartDetalle = STATE.smart.evaluated
+    ? 'ID 05 (Reallocated Sectors): ' + STATE.smart.id05 + '<br>' +
+      'ID C5 (Current Pending Sector): ' + STATE.smart.c5 + '<br>' +
+      'ID C6 (Uncorrectable Sector): ' + STATE.smart.c6 + '<br>' +
+      'ID C2 (Temperature): ' + STATE.smart.temp + ' °C<br>' +
+      '<strong>Veredicto:</strong> ' +
+      (STATE.smart.verdict==='critical' ? 'ESTADO CRÍTICO — REEMPLAZO INMEDIATO DE LA UNIDAD'
+       : STATE.smart.verdict==='warning' ? 'ALERTA TEMPRANA — MONITOREO RIGUROSO'
+       : 'UNIDAD OPERATIVA — DESGASTE NORMAL')
+    : 'Auditoría S.M.A.R.T. no realizada.';
+
+  const sello = score >= 70
+    ? '<div style="border:3px double #15803d;color:#15803d;padding:12px 18px;display:inline-block;border-radius:8px;font-weight:bold;letter-spacing:2px;font-size:14pt;">✔ PRÁCTICA VALIDADA</div>'
+    : '<div style="border:3px double #b45309;color:#b45309;padding:12px 18px;display:inline-block;border-radius:8px;font-weight:bold;letter-spacing:2px;font-size:14pt;">⚠ PRÁCTICA INCOMPLETA</div>';
+
+  const docHTML = `
+<html xmlns:o="urn:schemas-microsoft-com:office:office"
+      xmlns:w="urn:schemas-microsoft-com:office:word"
+      xmlns="http://www.w3.org/TR/REC-html40">
+<head>
+<meta charset="utf-8">
+<title>Informe Técnico de Diagnóstico</title>
+<!--[if gte mso 9]>
+<xml><w:WordDocument><w:View>Print</w:View><w:Zoom>100</w:Zoom></w:WordDocument></xml>
+<![endif]-->
+<style>
+  @page { size: A4; margin: 2cm 1.8cm; }
+  body { font-family: Calibri, Arial, sans-serif; font-size: 11pt; color: #111827; line-height: 1.5; }
+  h1 { font-size: 17pt; color: #1e3a8a; margin: 0 0 4pt 0; }
+  h2 { font-size: 13pt; color: #1e3a8a; border-bottom: 2px solid #1e3a8a; padding-bottom: 4pt; margin: 18pt 0 8pt 0; }
+  .sub { font-size: 10pt; color: #4b5563; margin: 0; }
+  .hdr { border-bottom: 3px solid #1e3a8a; padding-bottom: 10pt; margin-bottom: 14pt; }
+  table { width: 100%; border-collapse: collapse; margin: 8pt 0; }
+  th, td { border: 1px solid #9ca3af; padding: 6pt 8pt; font-size: 10.5pt; text-align: left; vertical-align: top; }
+  th { background: #e5edff; color: #1e3a8a; font-weight: bold; }
+  .ok { color: #15803d; font-weight: bold; }
+  .bad { color: #b91c1c; font-weight: bold; }
+  .warn { color: #b45309; font-weight: bold; }
+  .box { background: #f3f4f6; border-left: 4px solid #1e3a8a; padding: 9pt 12pt; margin: 10pt 0; font-size: 10.5pt; }
+  .score { text-align: center; border: 2px solid #1e3a8a; padding: 14pt; margin: 12pt 0; }
+  .score .n { font-size: 30pt; font-weight: bold; color: #1e3a8a; }
+  .footer { margin-top: 22pt; border-top: 1px solid #9ca3af; padding-top: 8pt; font-size: 9pt; color: #6b7280; text-align: center; }
+  ul { margin: 4pt 0 4pt 18pt; padding: 0; }
+  li { margin-bottom: 3pt; }
+</style>
+</head>
+<body>
+
+<div class="hdr">
+  <h1>INFORME TÉCNICO DE DIAGNÓSTICO DE HARDWARE Y BIOS/UEFI</h1>
+  <p class="sub">Manual Práctico de Laboratorio N°16 — Nivel Técnico | Niveles 0, 1 y 2</p>
+</div>
+
+<h2>1. Datos del Alumno</h2>
+<table>
+  <tr><th style="width:32%">Nombre y Apellido</th><td>${escapeHTML(nombre)}</td></tr>
+  <tr><th>Curso / División</th><td>${escapeHTML(curso)}</td></tr>
+  <tr><th>Establecimiento / Docente</th><td>${inst ? escapeHTML(inst) : '—'}</td></tr>
+  <tr><th>Fecha y hora de emisión</th><td>${fecha}</td></tr>
+</table>
+
+<h2>2. Nivel 0 — Diagnóstico Físico y Eléctrico</h2>
+
+<table>
+  <tr><th style="width:32%">Protocolo de Seguridad ESD</th>
+      <td class="${STATE.esd.done?'ok':'bad'}">${pendTxt(STATE.esd.done)}<br>
+      <span style="font-weight:normal;color:#374151;">
+      • Desconexión total de la red eléctrica: ${STATE.esd.disconnected ? 'Verificado' : 'No verificado'}<br>
+      • Descarga de energía estática residual: ${STATE.esd.grounded ? 'Verificado' : 'No verificado'}
+      </span></td></tr>
+  <tr><th>Matriz de Tolerancia ATX (±5%)</th>
+      <td class="${STATE.atx.evaluated && STATE.atx.verdict==='ok' ? 'ok' : (STATE.atx.evaluated ? 'bad':'warn')}">
+      ${STATE.atx.evaluated ? (STATE.atx.verdict==='ok'?'✔ FUENTE OPERATIVA':'✖ FALLA — REEMPLAZO') : '⚠ PENDIENTE'}<br>
+      <span style="font-weight:normal;color:#374151;">${atxDetalle}</span></td></tr>
+  <tr><th>EZ Debug LEDs</th>
+      <td class="${STATE.ez.orderDone && STATE.ez.caseDone ? 'ok':'warn'}">
+      ${pendTxt(STATE.ez.orderDone && STATE.ez.caseDone)}<br>
+      <span style="font-weight:normal;color:#374151;">${ezDetalle}</span></td></tr>
+</table>
+
+<h2>3. Nivel 1 — Configuración y Telemetría UEFI</h2>
+<table>
+  <tr><th style="width:32%">Hardware Monitor</th>
+      <td>${STATE.uefi.saved ? 'Valores auditados y dentro de rango seguro.' : 'Auditoría pendiente.'}</td></tr>
+  <tr><th>Boot Priority</th>
+      <td>${STATE.uefi.saved ? 'Unidad de diagnóstico en posición 1.' : 'Sin configurar.'}</td></tr>
+  <tr><th>Auditoría de Seguridad (Windows 11 Ready)</th>
+      <td class="${STATE.uefi.saved?'ok':'warn'}">${STATE.uefi.saved?'✔ CONFORME':'⚠ PENDIENTE'}</td></tr>
+</table>
+<div class="box">${uefiDetalle}</div>
+
+<h2>4. Nivel 2 — Diagnóstico Profundo (Bare-Metal)</h2>
+<table>
+  <tr><th style="width:32%">MemTest86+ (RAM)</th>
+      <td class="${STATE.mem.correct?'ok':'warn'}">${STATE.mem.correct?'✔ DIAGNÓSTICO CORRECTO':'⚠ PENDIENTE'}<br>
+      <span style="font-weight:normal;color:#374151;">${memDetalle}</span></td></tr>
+  <tr><th>Auditoría S.M.A.R.T. (HDD/SSD)</th>
+      <td class="${STATE.smart.verdict==='critical'?'bad':(STATE.smart.verdict==='warning'?'warn':'ok')}">
+      ${STATE.smart.evaluated ? (STATE.smart.verdict==='critical'?'🔴 CRÍTICO':(STATE.smart.verdict==='warning'?'🟠 ALERTA':'🟢 OPERATIVO')) : '⚠ PENDIENTE'}<br>
+      <span style="font-weight:normal;color:#374151;">${smartDetalle}</span></td></tr>
+</table>
+
+<h2>5. Regla de Oro S.M.A.R.T. — Fundamento Teórico</h2>
+<div class="box">
+Si cualquier atributo interno clasificado como «Pre-falla» muestra un valor bruto distinto de cero en los IDs
+<strong>05, C5 o C6</strong>, la estructura lógica del almacenamiento se encuentra formalmente en estado crítico.<br><br>
+<strong>ACCIÓN REQUERIDA:</strong> proceder al reemplazo inmediato del disco rígido o unidad de estado sólido para evitar
+la pérdida catastrófica de datos, independientemente de si el sistema operativo principal aún logra arrancar.
+</div>
+
+<h2>6. Puntaje y Validación</h2>
+<div class="score">
+  <div class="n">${score} / 100</div>
+  <div style="font-size:10pt;color:#4b5563;letter-spacing:2px;">PUNTAJE DE VALIDACIÓN TÉCNICA</div>
+  <div style="margin-top:12pt;">${sello}</div>
+</div>
+
+<h2>7. Observaciones y Conclusiones del Alumno</h2>
+<table>
+  <tr><td style="height:80pt;vertical-align:top;">&nbsp;</td></tr>
+</table>
+<table>
+  <tr><td style="height:80pt;vertical-align:top;">&nbsp;</td></tr>
+</table>
+
+<div class="footer">
+  Documento generado automáticamente por el <strong>Simulador Interactivo de Diagnóstico de Hardware y BIOS/UEFI</strong> —
+  Basado en el Manual Práctico de Laboratorio N°16 (Nivel Técnico).<br>
+  Este comprobante debe adjuntarse en Google Classroom como evidencia de realización de la práctica.
+</div>
+
+</body>
+</html>`;
+
+  const blob = new Blob(['\ufeff', docHTML], { type: 'application/msword' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const fileBase = 'Informe_Diagnostico_' +
+                   nombre.replace(/[^\wáéíóúÁÉÍÓÚñÑ\s]/g,'').replace(/\s+/g,'_') +
+                   '_' + curso.replace(/[^\wáéíóúÁÉÍÓÚñÑ\s]/g,'').replace(/\s+/g,'_');
+  a.href = url;
+  a.download = fileBase + '.doc';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url), 1500);
+
+  setVerdict($('docVerdict'),'ok','✔ Informe generado correctamente',
+    'El archivo <strong>' + fileBase + '.doc</strong> fue descargado. Adjuntalo en Google Classroom como comprobante de la práctica.<br><br>' +
+    'Puntaje obtenido: <strong>' + score + '/100</strong>');
+  toast('📄 Informe .doc generado y descargado.','ok');
+});
+
+function escapeHTML(s){
+  return String(s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+
+/* ============================================================
+   INICIALIZACIÓN
+   ============================================================ */
+initRailZones();
+renderSeq();
+renderBoot();
+Object.keys(SLIDER_DEFS).forEach(updateSlider);
+actualizarResumen();
+actualizarScore();
+updateProgress();
+
+/* Pequeña variación inicial en los sliders para forzar auditoría */
+(function initRandomMonitor(){
+  const cpuT = [42,55,45,72,88][Math.floor(Math.random()*5)];
+  const sysT = [36,42,38,55,48][Math.floor(Math.random()*5)];
+  const vc   = [1.25,1.32,1.18,1.45,1.05][Math.floor(Math.random()*5)];
+  const dr   = [1.35,1.38,1.32,1.52,1.20][Math.floor(Math.random()*5)];
+
+  $('slCpuT').value = cpuT;
+  $('slSysT').value = sysT;
+  $('slVcore').value = vc;
+  $('slDram').value = dr;
+
+  Object.keys(SLIDER_DEFS).forEach(updateSlider);
+})();
+
+/* Atajo de teclado F10 real para el módulo UEFI */
+document.addEventListener('keydown', (e)=>{
+  if(e.key === 'F10'){
+    e.preventDefault();
+    if($('mod2').classList.contains('active')){
+      $('btnF10').click();
+    }
+  }
+});
+</script>
+</body>
+</html>
